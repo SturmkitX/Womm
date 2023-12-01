@@ -21,7 +21,8 @@ variable "availability_zone" {
 
 resource "aws_vpc" "womm-vpc-01" {
   cidr_block            = "172.16.0.0/16"
-#   enable_dns_hostnames  = true
+  enable_dns_hostnames  = true
+  enable_dns_support    = true
 
   tags = {
     Name = "womm-vpc-01"
