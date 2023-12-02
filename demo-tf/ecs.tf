@@ -123,7 +123,7 @@ resource "aws_eip" "gw-eip" {
 
 resource "aws_nat_gateway" "womm-nat" {
   allocation_id = aws_eip.gw-eip.id
-  subnet_id     = aws_subnet.womm-subnet-01.id
+  subnet_id     = aws_subnet.womm-subnet-public.id
 
   tags = {
     Name = "gw NAT"
@@ -132,4 +132,38 @@ resource "aws_nat_gateway" "womm-nat" {
   # To ensure proper ordering, it is recommended to add an explicit dependency
   # on the Internet Gateway for the VPC.
 #   depends_on = [aws_internet_gateway.example]
+}
+
+resource "aws_subnet" "womm-subnet-public" {
+  vpc_id                  = aws_vpc.womm-vpc-01.id
+  cidr_block              = "172.16.51.0/24"
+  map_public_ip_on_launch = true
+  availability_zone       = var.availability_zone
+
+  tags = {
+    Name = "womm-subnet-public"
+  }
+
+}
+
+resource "aws_internet_gateway" "gw" {
+  vpc_id = aws_vpc.womm-vpc-01.id
+}
+
+resource "aws_route_table" "womm-route-public" {
+  vpc_id = aws_vpc.womm-vpc-01.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.gw.id
+  }
+
+  tags = {
+    Name = "womm-route-table-01"
+  }
+}
+
+resource "aws_route_table_association" "womm-route-assoc-public" {
+  subnet_id = aws_subnet.womm-subnet-public.id
+  route_table_id = aws_route_table.womm-route-public.id
 }

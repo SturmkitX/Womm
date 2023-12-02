@@ -39,7 +39,6 @@ resource "aws_subnet" "womm-subnet-01" {
     Name = "womm-subnet-01"
   }
 
-  depends_on = [ aws_internet_gateway.gw ]
 }
 
 resource "aws_route53_zone" "dev" {
@@ -62,16 +61,13 @@ resource "aws_route53_record" "dev-ns" {
   records = ["172.16.50.50"]
 }
 
-resource "aws_internet_gateway" "gw" {
-  vpc_id = aws_vpc.womm-vpc-01.id
-}
-
 resource "aws_route_table" "womm-route-01" {
   vpc_id = aws_vpc.womm-vpc-01.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.gw.id
+    # gateway_id = aws_internet_gateway.gw.id
+    nat_gateway_id = aws_nat_gateway.womm-nat.id
   }
 
   tags = {

@@ -27,13 +27,14 @@ resource "aws_security_group" "womm-demo-sg" {
 }
 
 resource "aws_network_interface" "womm-demo-01-nic" {
-  subnet_id = aws_subnet.womm-subnet-01.id
+  subnet_id = aws_subnet.womm-subnet-public.id
   security_groups = [aws_security_group.womm-demo-sg.id]
 }
 
 resource "aws_instance" "kube-worker-01" {
   ami           = "ami-064087b8d355e9051"
   instance_type = "t3.micro"
+#   associate_public_ip_address = true
 
   network_interface {
     network_interface_id  = aws_network_interface.womm-demo-01-nic.id
@@ -64,13 +65,4 @@ resource "aws_key_pair" "demo-keypair-01" {
   tags = {
     Name  = "womm-ssh-demo"
   }
-}
-
-resource "aws_eip" "bar" {
-#   domain = "vpc"
-
-#   instance                  = aws_instance.kube-worker-01.id
-#   associate_with_private_ip = "10.0.0.12"
-  network_interface = aws_network_interface.womm-demo-01-nic.id
-  depends_on                = [aws_internet_gateway.gw]
 }
