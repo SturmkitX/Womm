@@ -10,7 +10,7 @@ resource "aws_ecs_cluster" "womm-ecs-cluster" {
 resource "aws_ecs_task_definition" "womm-nginx-task-def" {
   family = "service"
   network_mode = "awsvpc"
-  requires_compatibilities = [ "FARGATE" ]
+  # requires_compatibilities = [ "FARGATE" ]
   cpu       = 256
   memory    = 512
   container_definitions = jsonencode([

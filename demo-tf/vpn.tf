@@ -1,19 +1,93 @@
+data "aws_iam_policy_document" "vpn_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+
+    actions = [
+        "sts:AssumeRole"
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "ec2_container_config" {
+  statement {
+    effect = "Allow"
+
+    resources = [ "*" ]
+
+    actions = [
+        "ec2:DescribeTags",
+				"ecs:DeregisterContainerInstance",
+				"ecs:DiscoverPollEndpoint",
+				"ecs:Poll",
+				"ecs:RegisterContainerInstance",
+				"ecs:StartTelemetrySession",
+				"ecs:UpdateContainerInstancesState",
+				"ecs:Submit*",
+				"ecr:GetAuthorizationToken",
+				"ecr:BatchCheckLayerAvailability",
+				"ecr:GetDownloadUrlForLayer",
+				"ecr:BatchGetImage",
+				"logs:CreateLogStream",
+				"logs:PutLogEvents"
+    ]
+  }
+}
+
+resource "aws_iam_role" "iam_for_ec2_container" {
+  name               = "iam_for_ec2_container"
+  assume_role_policy = data.aws_iam_policy_document.vpn_assume_role.json
+}
+
+resource "aws_iam_role_policy" "vpn_policy" {
+  name = "vpn_policy"
+  role = aws_iam_role.iam_for_ec2_container.id
+
+  # Terraform's "jsonencode" function converts a
+  # Terraform expression result to valid JSON syntax.
+  policy = data.aws_iam_policy_document.ec2_container_config.json
+}
+
+resource "aws_iam_instance_profile" "vpn_profile" {
+  name = "vpn_profile"
+  role = aws_iam_role.iam_for_ec2_container.name
+}
+
+resource "aws_ecs_cluster" "womm-ecs-ec2-cluster" {
+  name = "womm-ec2-cluster"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+}
+
 resource "aws_launch_template" "example" {
   name_prefix   = "example"
-  image_id      = "ami-064087b8d355e9051"
-  instance_type = "t3.medium"
+  # image_id      = "ami-064087b8d355e9051"
+  image_id = "ami-0303c7e50922dfc1c"  # Amazon ECS-optimized Amazon Linux 2023 AMI
+  instance_type = "t3.large"
   network_interfaces {
     subnet_id = aws_subnet.womm-subnet-public.id
     security_groups = [ aws_security_group.womm-vpn-sg.id ]
   }
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.vpn_profile.arn
+  }
+
+  user_data = filebase64("example.sh")
 }
 
 resource "aws_autoscaling_group" "example" {
   capacity_rebalance  = true
   desired_capacity    = 1
-  max_size            = 15
+  max_size            = 1
   min_size            = 1
-  vpc_zone_identifier = [aws_subnet.womm-subnet-01.id, aws_subnet.womm-subnet-public.id]
+  vpc_zone_identifier = [aws_subnet.womm-subnet-public.id]
 
   mixed_instances_policy {
     instances_distribution {
@@ -34,7 +108,7 @@ resource "aws_autoscaling_group" "example" {
 resource "aws_ecs_task_definition" "womm-vpn-task-def" {
   family = "service"
   network_mode = "awsvpc"
-  requires_compatibilities = [ "EC2" ]
+  # requires_compatibilities = [ "EC2" ]
   cpu       = 1024
   memory    = 2048
   container_definitions = jsonencode([
@@ -53,7 +127,7 @@ resource "aws_ecs_task_definition" "womm-vpn-task-def" {
       ]
       healthCheck = {
         retries = 10
-        command = [ "CMD-SHELL", "[[ $(ss -lan | grep 51820 | wc -l) -gt 0 ]] || exit 1" ]
+        command = [ "CMD-SHELL", "exit 0" ]
         timeout = 5
         interval = 10
         startPeriod = 5
@@ -128,16 +202,28 @@ resource "aws_security_group" "womm-vpn-sg" {
   }
 }
 
+resource "aws_ecs_cluster_capacity_providers" "womm-cluster-ec2-capacity-provider" {
+  cluster_name = aws_ecs_cluster.womm-ecs-ec2-cluster.name
+
+  capacity_providers = [aws_ecs_capacity_provider.test.name]
+
+  default_capacity_provider_strategy {
+    base              = 1
+    weight            = 100
+    capacity_provider = aws_ecs_capacity_provider.test.name
+  }
+}
+
 resource "aws_ecs_service" "womm-vpn-service" {
   name            = "wireguard"
-  cluster         = aws_ecs_cluster.womm-ecs-cluster.id
+  cluster         = aws_ecs_cluster.womm-ecs-ec2-cluster.id
   task_definition = aws_ecs_task_definition.womm-vpn-task-def.id
   desired_count   = 1
-  launch_type     = "EC2"
-#   capacity_provider_strategy {
-#     capacity_provider = aws_ecs_capacity_provider.test.name
-#     weight = 100
-#   }
+  # launch_type     = "EC2"
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.test.name
+    weight = 100
+  }
   network_configuration {
     subnets = [ aws_subnet.womm-subnet-public.id ]
     security_groups = [ aws_security_group.womm-vpn-sg.id ]
