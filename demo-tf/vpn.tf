@@ -13,43 +13,39 @@ data "aws_iam_policy_document" "vpn_assume_role" {
   }
 }
 
-data "aws_iam_policy_document" "ec2_container_config" {
-  statement {
-    effect = "Allow"
+# data "aws_iam_policy_document" "ec2_container_config" {
+#   statement {
+#     effect = "Allow"
 
-    resources = [ "*" ]
+#     resources = [ "*" ]
 
-    actions = [
-        "ec2:DescribeTags",
-				"ecs:DeregisterContainerInstance",
-				"ecs:DiscoverPollEndpoint",
-				"ecs:Poll",
-				"ecs:RegisterContainerInstance",
-				"ecs:StartTelemetrySession",
-				"ecs:UpdateContainerInstancesState",
-				"ecs:Submit*",
-				"ecr:GetAuthorizationToken",
-				"ecr:BatchCheckLayerAvailability",
-				"ecr:GetDownloadUrlForLayer",
-				"ecr:BatchGetImage",
-				"logs:CreateLogStream",
-				"logs:PutLogEvents"
-    ]
-  }
-}
+#     actions = [
+#         "ec2:DescribeTags",
+# 				"ecs:DeregisterContainerInstance",
+# 				"ecs:DiscoverPollEndpoint",
+# 				"ecs:Poll",
+# 				"ecs:RegisterContainerInstance",
+# 				"ecs:StartTelemetrySession",
+# 				"ecs:UpdateContainerInstancesState",
+# 				"ecs:Submit*",
+# 				"ecr:GetAuthorizationToken",
+# 				"ecr:BatchCheckLayerAvailability",
+# 				"ecr:GetDownloadUrlForLayer",
+# 				"ecr:BatchGetImage",
+# 				"logs:CreateLogStream",
+# 				"logs:PutLogEvents"
+#     ]
+#   }
+# }
 
 resource "aws_iam_role" "iam_for_ec2_container" {
   name               = "iam_for_ec2_container"
   assume_role_policy = data.aws_iam_policy_document.vpn_assume_role.json
 }
 
-resource "aws_iam_role_policy" "vpn_policy" {
-  name = "vpn_policy"
-  role = aws_iam_role.iam_for_ec2_container.id
-
-  # Terraform's "jsonencode" function converts a
-  # Terraform expression result to valid JSON syntax.
-  policy = data.aws_iam_policy_document.ec2_container_config.json
+resource "aws_iam_role_policy_attachment" "ec2_instance_policy_attachment" {
+  role       = aws_iam_role.iam_for_ec2_container.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 }
 
 resource "aws_iam_instance_profile" "vpn_profile" {
@@ -70,7 +66,7 @@ resource "aws_launch_template" "example" {
   name_prefix   = "example"
   # image_id      = "ami-064087b8d355e9051"
   image_id = "ami-0303c7e50922dfc1c"  # Amazon ECS-optimized Amazon Linux 2023 AMI
-  instance_type = "t3.large"
+  instance_type = "t3.medium"
   network_interfaces {
     subnet_id = aws_subnet.womm-subnet-public.id
     security_groups = [ aws_security_group.womm-vpn-sg.id ]
@@ -79,20 +75,22 @@ resource "aws_launch_template" "example" {
     arn = aws_iam_instance_profile.vpn_profile.arn
   }
 
+  key_name = aws_key_pair.demo-keypair-01.key_name
+
   user_data = filebase64("example.sh")
 }
 
 resource "aws_autoscaling_group" "example" {
   capacity_rebalance  = true
-  desired_capacity    = 1
-  max_size            = 1
-  min_size            = 1
+  desired_capacity    = 0
+  max_size            = 2
+  min_size            = 0
   vpc_zone_identifier = [aws_subnet.womm-subnet-public.id]
 
   mixed_instances_policy {
     instances_distribution {
       on_demand_base_capacity                  = 0
-      on_demand_percentage_above_base_capacity = 25
+      on_demand_percentage_above_base_capacity = 0
       spot_allocation_strategy                 = "lowest-price"
     }
 
@@ -104,10 +102,28 @@ resource "aws_autoscaling_group" "example" {
   }
 }
 
+resource "aws_ecs_capacity_provider" "test" {
+  name = "test"
+
+  auto_scaling_group_provider {
+    auto_scaling_group_arn         = aws_autoscaling_group.example.arn
+    # managed_termination_protection = "ENABLED"
+
+    managed_scaling {
+      maximum_scaling_step_size = 100
+      minimum_scaling_step_size = 1
+      status                    = "ENABLED"
+      target_capacity           = 100
+    }
+  }
+}
+
 
 resource "aws_ecs_task_definition" "womm-vpn-task-def" {
   family = "service"
-  network_mode = "awsvpc"
+  # network_mode = "awsvpc"
+  network_mode = "bridge"
+  
   # requires_compatibilities = [ "EC2" ]
   cpu       = 1024
   memory    = 2048
@@ -163,6 +179,10 @@ resource "aws_ecs_task_definition" "womm-vpn-task-def" {
         {
             name = "LOG_CONFS"
             value = "true"
+        },
+        {
+            name = "SERVER_PORT"
+            value = "51820"
         }
       ]
     }
@@ -183,6 +203,14 @@ resource "aws_security_group" "womm-vpn-sg" {
     from_port        = 51820
     to_port          = 51820
     protocol         = "udp"
+    cidr_blocks      = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description      = "SSH"
+    from_port        = 22
+    to_port          = 22
+    protocol         = "tcp"
     cidr_blocks      = ["0.0.0.0/0"]
   }
 
