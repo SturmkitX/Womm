@@ -80,7 +80,7 @@ resource "aws_ecs_service" "womm-nginx-service" {
   cluster         = aws_ecs_cluster.womm-ecs-cluster.id
   task_definition = aws_ecs_task_definition.womm-nginx-task-def.arn
   desired_count   = 1
-  launch_type     = "FARGATE"
+  # launch_type     = "FARGATE"
   network_configuration {
     subnets = [ aws_subnet.womm-subnet-01.id ]
     security_groups = [ aws_security_group.womm-ecs-sg.id ]
@@ -105,17 +105,17 @@ resource "aws_ecs_service" "womm-nginx-service" {
 #   }
 }
 
-# resource "aws_ecs_cluster_capacity_providers" "womm-cluster-capacity-provider" {
-#   cluster_name = aws_ecs_cluster.womm-ecs-cluster.name
+resource "aws_ecs_cluster_capacity_providers" "womm-cluster-capacity-provider" {
+  cluster_name = aws_ecs_cluster.womm-ecs-cluster.name
 
-#   capacity_providers = ["FARGATE_SPOT", "FARGATE"]
+  capacity_providers = ["FARGATE_SPOT", "FARGATE"]
 
-#   default_capacity_provider_strategy {
-#     base              = 1
-#     weight            = 100
-#     capacity_provider = "FARGATE_SPOT"
-#   }
-# }
+  default_capacity_provider_strategy {
+    base              = 1
+    weight            = 100
+    capacity_provider = "FARGATE_SPOT"
+  }
+}
 
 resource "aws_eip" "gw-eip" {
   depends_on                = [aws_internet_gateway.gw]
@@ -166,4 +166,20 @@ resource "aws_route_table" "womm-route-public" {
 resource "aws_route_table_association" "womm-route-assoc-public" {
   subnet_id = aws_subnet.womm-subnet-public.id
   route_table_id = aws_route_table.womm-route-public.id
+}
+
+resource "aws_ecs_capacity_provider" "test" {
+  name = "test"
+
+  auto_scaling_group_provider {
+    auto_scaling_group_arn         = aws_autoscaling_group.example.arn
+    # managed_termination_protection = "ENABLED"
+
+    managed_scaling {
+      maximum_scaling_step_size = 1000
+      minimum_scaling_step_size = 1
+      status                    = "ENABLED"
+      target_capacity           = 1
+    }
+  }
 }
