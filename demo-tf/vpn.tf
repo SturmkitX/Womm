@@ -252,8 +252,8 @@ resource "aws_ecs_service" "womm-vpn-service" {
     capacity_provider = aws_ecs_capacity_provider.test.name
     weight = 100
   }
-  network_configuration {
-    subnets = [ aws_subnet.womm-subnet-public.id ]
-    security_groups = [ aws_security_group.womm-vpn-sg.id ]
-  }
+  # network_configuration {
+  #   subnets = [ aws_subnet.womm-subnet-public.id ]
+  #   security_groups = [ aws_security_group.womm-vpn-sg.id ]
+  # }
 }
